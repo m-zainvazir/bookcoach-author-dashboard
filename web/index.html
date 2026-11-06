@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="pipeline-token" content="{{TOKEN}}">
+  <title>Book Coach pipeline</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" id="home" href="/" title="Home — the Pipeline grid"><span class="mark" aria-hidden="true"></span><strong>Book Coach</strong><span class="muted">pipeline</span></a>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button class="tab active" role="tab" data-tab="grid" aria-selected="true">Pipeline</button>
+      <button class="tab" role="tab" data-tab="canvas" aria-selected="false">Canvas</button>
+      <button class="tab" role="tab" data-tab="health" aria-selected="false">Health <span id="health-badge" class="badge"></span></button>
+      <button class="tab" role="tab" data-tab="wizard" aria-selected="false">Onboard</button>
+      <button class="tab" role="tab" data-tab="access" aria-selected="false">Access</button>
+    </nav>
+    <div class="tools">
+      <span id="stamp" class="muted"></span>
+      <button id="add-author" class="primary">+ Add author</button>
+      <button id="snapshot" class="ghost" title="Download a status-only snapshot — no credentials">Snapshot</button>
+      <button id="refresh" class="primary">Refresh…</button>
+    </div>
+  </header>
+
+  <section id="switches" class="switches" aria-label="Optional features"></section>
+
+  <main>
+    <section id="tab-grid" class="panel active" role="tabpanel">
+      <div id="readnote" class="readnote" role="status"></div>
+      <div id="legend" class="legend"></div>
+      <div class="grid-wrap"><table id="grid" class="grid"></table></div>
+      <p class="foot muted" id="cleanup-done"></p>
+      <p class="foot muted" id="doc"></p>
+    </section>
+
+    <section id="tab-canvas" class="panel" role="tabpanel">
+      <div class="canvas-bar">
+        <label>Author <select id="canvas-author"></select></label>
+        <span class="muted">Drag to pan · scroll to zoom · click a step</span>
+        <button id="canvas-fit" class="ghost">Fit</button>
+      </div>
+      <svg id="canvas" class="canvas" role="img" aria-label="The pipeline for one author, as a graph"></svg>
+    </section>
+
+    <section id="tab-health" class="panel" role="tabpanel">
+      <div id="health"></div>
+    </section>
+
+    <section id="tab-wizard" class="panel" role="tabpanel">
+      <div id="wizard"></div>
+    </section>
+
+    <section id="tab-access" class="panel" role="tabpanel">
+      <div id="access"></div>
+    </section>
+  </main>
+
+  <aside id="drawer" class="drawer" aria-hidden="true">
+    <button id="drawer-close" class="close" aria-label="Close">×</button>
+    <div id="drawer-body"></div>
+  </aside>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="loading" class="loading">Loading…</div>
+
+  <script src="/canvas.js"></script>
+  <script src="/wizard.js"></script>
+  <script src="/manage.js"></script>
+  <script src="/prototype.js"></script>
+  <script src="/access.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400;1,700&display=swap"><title>{{AUTHOR}} — Zipify sales text</title>
+<style>
+body{font-family:Lato,Arial,sans-serif;background:#f3f3f3;margin:0;padding:24px;color:#222}
+.wrap{max-width:820px;margin:0 auto}
+h1.page{font-size:22px;margin:0 0 4px}
+.how{color:#555;margin:0 0 20px;font-size:15px}
+.bar{display:flex;align-items:center;gap:12px;margin:26px 0 6px}
+.bar b{font-size:16px}
+button{background:#c00;color:#fff;border:0;border-radius:6px;padding:8px 16px;font-size:15px;cursor:pointer}
+button.ok{background:#2a7a2a}
+.box{background:#fff;border:1px solid #ccc;border-radius:8px;padding:22px 26px}
+/* what gets copied: Lato 18px like Zipify's Body Copy 1 */
+.box p{font-family:Lato;font-size:18px;line-height:1.43;color:#262626;margin:0 0 14px}
+.box h2{font-family:Lato;font-size:34px;line-height:1.2;color:#262626;font-weight:700;margin:26px 0 12px}
+.box h3{font-family:Lato;font-size:28px;line-height:1.2;color:#262626;font-weight:700;margin:0 0 14px}.box h4{font-family:Lato;font-size:24px;line-height:1.2;color:#262626;font-weight:700;margin:0 0 12px}.box strong{font-weight:700}
+</style></head><body><div class="wrap">
+<h1 class="page">{{BOOK}} — Zipify sales text</h1>
+<p class="how">In Zipify, click the text box, press Ctrl+A to select the old text, then paste. For each piece below: press its <b>Copy</b> button, then Ctrl+V in Zipify. Headings, bold and spacing come along.</p>
+
+<div class="bar"><b>Piece 1 — Main image text (slogan + description)</b><button onclick="cp('pimg',this)">Copy</button></div>
+<div class="box" id="pimg">
+{{PIECE1}}
+</div>
+
+<div class="bar"><b>Piece 2 — The top text box (question + “What You Receive”)</b><button onclick="cp('p2',this)">Copy</button></div>
+<div class="box" id="p2">
+{{PIECE2}}
+</div>
+
+<div class="bar"><b>Piece 3 — Long text after Add to Cart</b><button onclick="cp('p3',this)">Copy</button></div>
+<div class="box" id="p3">
+{{PIECE3}}
+<p>_____________________________________________________________________</p>
+<p><strong>Your Book + 10-Day BookCoach AI Access</strong></p>
+<p>Your copy of {{TERMS_BOOK}} will be shipped to you immediately after your order is completed.</p>
+<p>With your book, you’ll receive 10 days of access to the BookCoach AI, so you can experience the coach for yourself and begin applying what you’re reading.</p>
+<p>After your included 10-day access period, you may continue using the BookCoach AI for $59 per month.</p>
+<p><strong>Subscription Terms:</strong> Your 10-day access to the BookCoach AI is included with your purchase. After the 10-day period, continued access is $59/month. The subscription automatically renews monthly until canceled. You may cancel at any time before your next billing date to avoid the next monthly charge. Cancellation stops future charges and does not affect charges already incurred. No long-term commitment is required.</p>
+<p>The book is yours to keep whether or not you continue with the BookCoach AI.</p>
+</div>
+</div>
+<script>
+function cp(id, btn) {
+  const el = document.getElementById(id);
+  const r = document.createRange(); r.selectNodeContents(el);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+  s.removeAllRanges();
+  btn.textContent = ok ? 'Copied ✓' : 'Select the box and press Ctrl+C';
+  btn.classList.toggle('ok', ok);
+  setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('ok'); }, 2500);
+}
+</script></body></html>

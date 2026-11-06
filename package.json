@@ -1,0 +1,12 @@
+{
+  "name": "bookcoach-author-dashboard",
+  "private": true,
+  "type": "module",
+  "description": "Where every Book Coach author is in onboarding, and whether anything live has broken. Local only.",
+  "scripts": {
+    "dashboard": "node server.mjs",
+    "pipeline": "node pipeline.mjs",
+    "test": "node dashboard.test.mjs",
+    "check": "node --check lib-paths.mjs && node --check lib-pipeline.mjs && node --check lib-health.mjs && node --check lib-settings.mjs && node --check lib-switches.mjs && node --check lib-live.mjs && node --check lib-help.mjs && node --check lib-wizard.mjs && node --check lib-actions.mjs && node --check lib-pages.mjs && node --check lib-checklist.mjs && node --check lib-readings.mjs && node --check lib-landing.mjs && node --check lib-manage.mjs && node --check lib-prototypes.mjs && node --check web/manage.js && node --check web/prototype.js && node --check pipeline.mjs && node --check server.mjs && node --check web/app.js && node --check web/canvas.js && node --check web/wizard.js && node --check dashboard.test.mjs"
+  }
+}

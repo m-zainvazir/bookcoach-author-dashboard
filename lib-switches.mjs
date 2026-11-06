@@ -1,0 +1,229 @@
+/**
+ * lib-switches.mjs — make the pipeline's switches REAL.
+ *
+ * A switch that only changes a value in a file is a label, not a switch. Each
+ * one here changes the thing itself, and reports what it actually did:
+ *
+ *   guidance      on: install the /next-step skill at the repo root's .claude/skills/
+ *                 off: DELETE it — a skill that is present can still be invoked
+ *                 by its description; a skill that is gone cannot.
+ *   alertsLocal   on: create a Windows scheduled task running the health checks
+ *                 off: DELETE the task — nothing runs at all
+ *   alertsUptime  on/off: resume/pause the external /health monitor through the
+ *                 provider's API — or, with no API configured, say "manual"
+ *                 rather than pretend.
+ *   landingPages  on: install the /landing-page skill beside /next-step
+ *                 off: DELETE it (same reason as guidance)
+ *
+ * Plan: ghl-shopify subscription/plans/22-pipeline-dashboard.md §5.
+ * Every function returns { applied, state, detail } and never throws.
+ */
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, appendFileSync, readdirSync, rmdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { resolve, dirname } from 'node:path';
+import { DASH, REPO_ROOT as ROOT } from './lib-paths.mjs';
+
+/** Skills load from every directory between where `claude` starts and the git root. */
+export const REPO_ROOT = ROOT;
+export const SKILL_DIR = resolve(REPO_ROOT, '.claude', 'skills', 'next-step');
+export const SKILL_FILE = resolve(SKILL_DIR, 'SKILL.md');
+export const SKILL_TEMPLATE = resolve(DASH, 'skill', 'next-step.SKILL.md');
+export const LANDING_SKILL_DIR = resolve(REPO_ROOT, '.claude', 'skills', 'landing-page');
+export const LANDING_SKILL_TEMPLATE = resolve(DASH, 'skill', 'landing-page.SKILL.md');
+
+export const TASK_NAME = 'BookCoach Pipeline Health';
+export const TASK_SCRIPT = resolve(DASH, 'pipeline-health.local.vbs');
+export const ALERT_LOG = resolve(DASH, 'pipeline-alerts.local.log');
+export const ALERT_STATE = resolve(DASH, 'pipeline-alerts.local.json');
+
+const IS_WIN = process.platform === 'win32';
+const run = (cmd, args) => spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true });
+
+/* ------------------------------------------------------------- guidance --- */
+
+export function guidanceStatus() {
+  return { installed: existsSync(SKILL_FILE), path: SKILL_FILE };
+}
+
+export function applyGuidance(on, { template = SKILL_TEMPLATE, dir = SKILL_DIR } = {}) {
+  const file = resolve(dir, 'SKILL.md');
+  try {
+    if (on) {
+      const created = !existsSync(dirname(dir));
+      const body = readFileSync(template, 'utf8').replace(/\{\{DASHBOARD\}\}/g, DASH.replace(/\\/g, '/'));
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(file, body, 'utf8');
+      return {
+        applied: true, state: 'on',
+        detail: `installed ${file}${created ? ' — .claude/skills/ is new, so an already-open Claude Code session needs /reload-skills' : ''}`,
+      };
+    }
+    if (!existsSync(dir)) return { applied: true, state: 'off', detail: 'not installed' };
+    rmSync(dir, { recursive: true, force: true });
+    // Leave no empty .claude/skills/ behind — but never touch anything else in .claude/.
+    for (const parent of [dirname(dir), dirname(dirname(dir))]) {
+      try { if (!readdirSync(parent).length) rmdirSync(parent); else break; } catch { break; }
+    }
+    return { applied: true, state: 'off', detail: `removed ${dir}` };
+  } catch (err) {
+    return { applied: false, state: 'unknown', detail: `could not ${on ? 'install' : 'remove'} the skill: ${err.message}` };
+  }
+}
+
+/* ------------------------------------------------------- landing pages --- */
+
+/** The /landing-page skill: installed and removed exactly like /next-step. */
+export function applyLandingPages(on, { template = LANDING_SKILL_TEMPLATE, dir = LANDING_SKILL_DIR } = {}) {
+  return applyGuidance(on, { template, dir });
+}
+
+export const landingStatus = () => ({ installed: existsSync(resolve(LANDING_SKILL_DIR, 'SKILL.md')), path: resolve(LANDING_SKILL_DIR, 'SKILL.md') });
+
+/* ------------------------------------------------------- local alerts --- */
+
+/** schtasks schedule flags for an interval in minutes. */
+export function scheduleArgs(minutes) {
+  const m = Number(minutes);
+  if (m === 1440) return ['/SC', 'DAILY'];
+  if (m % 60 === 0 && m / 60 <= 23) return ['/SC', 'HOURLY', '/MO', String(m / 60)];
+  return ['/SC', 'MINUTE', '/MO', String(m)];
+}
+
+/**
+ * The hidden launcher the task runs. wscript + Run(..., 0) means no console
+ * window flashes up every hour. Regenerated each time alerts are switched on,
+ * deleted when they are switched off. Quotes inside a VBS string are doubled.
+ */
+export function taskScript({ dir = DASH, node = process.execPath } = {}) {
+  const q = (s) => `""${s}""`;
+  return [
+    "' Generated by the dashboard's Local alerts switch. Deleted when alerts are switched off.",
+    `CreateObject("WScript.Shell").Run "cmd /c cd /d ${q(dir)} && ${q(node)} pipeline.mjs health --notify >> pipeline-alerts.local.log 2>&1", 0, False`,
+    '',
+  ].join('\r\n');
+}
+
+export function alertsStatus() {
+  if (!IS_WIN) return { scheduled: false, detail: 'local alerts need Windows Task Scheduler' };
+  const r = run('schtasks', ['/Query', '/TN', TASK_NAME]);
+  return { scheduled: r.status === 0, detail: r.status === 0 ? `task "${TASK_NAME}" exists` : `no task "${TASK_NAME}"` };
+}
+
+export function applyAlertsLocal(on, { intervalMinutes = 60 } = {}) {
+  if (!IS_WIN) return { applied: false, state: 'off', detail: 'local alerts need Windows Task Scheduler' };
+  if (on) {
+    try {
+      writeFileSync(TASK_SCRIPT, taskScript(), 'utf8');
+    } catch (err) {
+      return { applied: false, state: 'off', detail: `could not write ${TASK_SCRIPT}: ${err.message}` };
+    }
+    const target = /\s/.test(TASK_SCRIPT) ? `wscript.exe "${TASK_SCRIPT}"` : `wscript.exe ${TASK_SCRIPT}`;
+    const r = run('schtasks', ['/Create', '/F', '/TN', TASK_NAME, '/TR', target, ...scheduleArgs(intervalMinutes)]);
+    if (r.status !== 0) return { applied: false, state: 'off', detail: `schtasks refused: ${(r.stderr || r.stdout || '').trim()}` };
+    return { applied: true, state: 'on', detail: `task "${TASK_NAME}" runs every ${intervalMinutes} min; notifies only when a check breaks or recovers` };
+  }
+  const r = run('schtasks', ['/Delete', '/F', '/TN', TASK_NAME]);
+  rmSync(TASK_SCRIPT, { force: true });
+  const gone = !alertsStatus().scheduled;
+  return gone
+    ? { applied: true, state: 'off', detail: r.status === 0 ? `task "${TASK_NAME}" deleted` : 'no task to delete' }
+    : { applied: false, state: 'on', detail: `the task is still there: ${(r.stderr || '').trim()}` };
+}
+
+/**
+ * A Windows toast, through PowerShell's own app id so no module or app
+ * registration is needed. Falls back to the log — an alert must never crash
+ * the job that raised it.
+ */
+export function notify(title, message) {
+  const line = `${new Date().toISOString()}  ${title} — ${message}\n`;
+  try { appendFileSync(ALERT_LOG, line); } catch { /* the log is best effort */ }
+  if (!IS_WIN) return { shown: false, detail: 'not Windows — logged only' };
+  const esc = (s) => String(s).replace(/'/g, "''").slice(0, 240);
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null',
+    '$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)',
+    "$n = $t.GetElementsByTagName('text')",
+    `$n.Item(0).AppendChild($t.CreateTextNode('${esc(title)}')) > $null`,
+    `$n.Item(1).AppendChild($t.CreateTextNode('${esc(message)}')) > $null`,
+    "$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'",
+    '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show([Windows.UI.Notifications.ToastNotification]::new($t))',
+  ].join('; ');
+  const r = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]);
+  return r.status === 0 ? { shown: true, detail: 'toast shown' } : { shown: false, detail: `toast failed, logged instead: ${(r.stderr || '').trim().slice(0, 200)}` };
+}
+
+export function readAlertState() {
+  try {
+    return existsSync(ALERT_STATE) ? JSON.parse(readFileSync(ALERT_STATE, 'utf8')) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeAlertState(state) {
+  writeFileSync(ALERT_STATE, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+}
+
+/* ------------------------------------------------------- uptime monitor --- */
+
+/**
+ * Resume (on) or pause (off) the external monitor. UptimeRobot's v2 API takes
+ * `status` 0 (pause) / 1 (resume) on editMonitor. With no provider configured
+ * the switch is honest about being manual.
+ *
+ * ⚠ UptimeRobot's free plan terms were reported (2024) to exclude commercial
+ * use. Check the provider's terms before relying on its free tier.
+ */
+export async function applyAlertsUptime(on, settings, { fetchImpl = fetch } = {}) {
+  const provider = settings.uptimeProvider || '';
+  if (!provider) {
+    return { applied: false, state: on ? 'on' : 'off', manual: true, detail: `manual — ${on ? 'resume' : 'pause'} the /health monitor at your uptime provider (no provider API configured)` };
+  }
+  if (provider !== 'uptimerobot') return { applied: false, state: 'unknown', detail: `unknown provider "${provider}"` };
+  if (!settings.uptimeApiKey || !settings.uptimeMonitorId) {
+    return { applied: false, state: 'unknown', manual: true, detail: 'uptimerobot needs uptimeApiKey and uptimeMonitorId — or leave the provider empty and manage it by hand' };
+  }
+  try {
+    const res = await fetchImpl('https://api.uptimerobot.com/v2/editMonitor', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'cache-control': 'no-cache' },
+      body: new URLSearchParams({ api_key: settings.uptimeApiKey, format: 'json', id: String(settings.uptimeMonitorId), status: on ? '1' : '0' }).toString(),
+      signal: AbortSignal.timeout(20000),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body.stat !== 'ok') return { applied: false, state: 'unknown', detail: `UptimeRobot refused: ${JSON.stringify(body.error || body).slice(0, 200)}` };
+    return { applied: true, state: on ? 'on' : 'off', detail: `UptimeRobot monitor ${settings.uptimeMonitorId} ${on ? 'resumed' : 'paused'}` };
+  } catch (err) {
+    return { applied: false, state: 'unknown', detail: `UptimeRobot unreachable: ${err.message}` };
+  }
+}
+
+/* ------------------------------------------------------------ dispatch --- */
+
+/** Apply whichever switches `changes` touches. Returns { [switch]: result }. */
+export async function applySwitches(changes, settings, opts = {}) {
+  const out = {};
+  if ('guidance' in changes) out.guidance = applyGuidance(settings.guidance === 'on', opts.guidance);
+  if ('alertsLocal' in changes || ('alertsIntervalMinutes' in changes && settings.alertsLocal === 'on')) {
+    out.alertsLocal = (opts.applyAlertsLocal || applyAlertsLocal)(settings.alertsLocal === 'on', { intervalMinutes: settings.alertsIntervalMinutes });
+  }
+  if ('alertsUptime' in changes) out.alertsUptime = await (opts.applyAlertsUptime || applyAlertsUptime)(settings.alertsUptime === 'on', settings);
+  if ('landingPages' in changes) out.landingPages = applyLandingPages(settings.landingPages === 'on', opts.landingPages);
+  return out;
+}
+
+/** What each switch looks like on this machine right now — the truth, not the file. */
+export function switchReality(settings) {
+  const g = guidanceStatus();
+  const a = alertsStatus();
+  const l = landingStatus();
+  return {
+    landingPages: { setting: settings.landingPages, actual: l.installed ? 'on' : 'off', detail: l.installed ? `skill installed at ${l.path} — chats use ${settings.landingModel}, ${settings.landingEffort} effort` : 'not installed — "Copy the prompt" still works by hand' },
+    guidance: { setting: settings.guidance, actual: g.installed ? 'on' : 'off', detail: g.installed ? `installed at ${g.path}` : 'not installed' },
+    alertsLocal: { setting: settings.alertsLocal, actual: a.scheduled ? 'on' : 'off', detail: a.detail },
+    alertsUptime: { setting: settings.alertsUptime, actual: settings.uptimeProvider ? settings.alertsUptime : 'manual', detail: settings.uptimeProvider ? `provider ${settings.uptimeProvider}` : 'no provider API — managed by hand at the provider' },
+  };
+}
